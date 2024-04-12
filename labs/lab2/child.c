@@ -1,76 +1,84 @@
-#define MAX_LENGTH 256
-#define ENV_COUNT 11        // SHELL, HOME, HOSTNAME, LOGNAME, LANG, TERM, USER, LC_COLLATE, PATH, CHILD_PATH, NULL
-#define _GNU_SOURCE
-
-#include <sys/types.h>
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+
+#define MAX_LENGTH 256
+#define ENV_COUNT 11
+#define _GNU_SOURCE
 
 void printStrings(char **strings, size_t rows);
-char **newStrings(size_t rows, size_t columns);
-void childEnvironment(char **childEnv, char *childEnvPath);
+char **allocateStringArray(size_t rows, size_t columns);
+void populateChildEnvironment(char **childEnv, char *childEnvPath);
 
 int main(int argc, char *argv[], char *envp[])
-{
+{   
+    //получение переменных для дочернего процесса 
     pid_t pid = getpid();
     pid_t ppid = getppid();
     char *procName = argv[0];
     char *envPath = argv[1];
-    printf("child process name: %s\npid: %d\nppid: %d\nenvironment:\n", procName, pid, ppid);
-    char **childEnv = newStrings(ENV_COUNT, MAX_LENGTH);
-    childEnvironment(childEnv, envPath);
-    printStrings(childEnv, ENV_COUNT);
-    return 0;
 
+    //вывод информации про дочерний процесс 
+    printf("Child process name: %s\nPID: %d\nPPID: %d\nEnvironment:\n", procName, pid, ppid);
+
+    char **childEnv = allocateStringArray(ENV_COUNT, MAX_LENGTH); // выделение памяти под массив строк переменных среды 
+    populateChildEnvironment(childEnv, envPath); // заполнение массива строк переменными среды по указанному пути envPath
+    printStrings(childEnv, ENV_COUNT); // вывод строк переменныз окружения 
+
+    sleep(2);
+
+    return 0;
 }
 
-char **newStrings(size_t rows, size_t columns)
+char **allocateStringArray(size_t rows, size_t columns)
 {
-    char **result = (char**)calloc(rows, sizeof(char*));
-    if(!result)
+    char **result = calloc(rows, sizeof(char *));
+    if (!result)
     {
-        fprintf(stderr, "%s\n", strerror(errno));
-        exit(errno);
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
     }
-    for(size_t i = 0; i < rows; i++)
+
+    for (size_t i = 0; i < rows; i++)
     {
-        result[i] = (char*)calloc(columns, sizeof(char));
-        if(!result[i])
+        result[i] = calloc(columns, sizeof(char));
+        if (!result[i])
         {
-            fprintf(stderr, "%s\n", strerror(errno));
-            exit(errno);
+            perror("Memory allocation failed");
+            exit(EXIT_FAILURE);
         }
     }
+
     return result;
 }
 
 void printStrings(char **strings, size_t rows)
 {
-    for(size_t i = 0; i < rows; i++)
-        fprintf(stdout, "%s\n", strings[i]);
+    for (size_t i = 0; i < rows; i++)
+        printf("%s\n", strings[i]);
 }
 
-void childEnvironment(char **childEnv, char *childEnvPath)
+void populateChildEnvironment(char **childEnv, char *childEnvPath)
 {
-    FILE* f = fopen(childEnvPath, "rt");
-    if(!f)
+    FILE *file = fopen(childEnvPath, "rt");
+    if (!file)
     {
-        fprintf(stderr, "can't open file %s ", childEnvPath);
-        exit(errno);
+        perror("Unable to open file");
+        exit(EXIT_FAILURE);
     }
-    char tmp[MAX_LENGTH];
 
-    for(size_t i = 0; fscanf(f, "%s ", tmp) != EOF; i++)
+    char tmp[MAX_LENGTH];
+    for (size_t i = 0; fscanf(file, "%s ", tmp) != EOF; i++)
     {
         sprintf(childEnv[i], "%s=%s", tmp, getenv(tmp));
     }
 
-    if(fclose(f))
+    if (fclose(file) != 0)
     {
-        fprintf(stderr, "can't close file %s ", childEnvPath);
-        exit(errno);
+        perror("Unable to close file");
+        exit(EXIT_FAILURE);
     }
 }
